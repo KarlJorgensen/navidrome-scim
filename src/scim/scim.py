@@ -174,7 +174,7 @@ def resource_types():
     # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
     # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
     return {
-        "totalResults": 2,
+        "totalResults": 1,
         "itemsPerPage": 10,
         "startIndex": 1,
         "schemas": [
@@ -182,7 +182,6 @@ def resource_types():
         ],
         "Resources": [
             resource_type_user(),
-            resource_type_group(),
         ]
     }
 
@@ -202,25 +201,6 @@ def resource_type_user():
         "schemaExtensions": [],
         "meta": {
             "location": flask.url_for('.resource_type_user', _external=True),
-            "resourceType": "ResourceType"
-        }
-    }
-
-@bp.route('/Schemas/urn:ietf:params:scim:schemas:core:2.0:Group')
-def resource_type_group():
-    # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
-    # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
-    return {
-        "schemas": [
-            "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
-        ],
-        "id":"Group",
-        "name":"Group",
-        "endpoint": "/Groups",
-        "description": "Group",
-        "schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
-        "meta": {
-            "location": flask.url_for('.resource_type_group', _external=True),
             "resourceType": "ResourceType"
         }
     }
