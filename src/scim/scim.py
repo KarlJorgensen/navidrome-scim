@@ -61,11 +61,24 @@ from .db import get_db
 bp = Blueprint('scim', __name__, url_prefix='/scim/v2')
 
 @bp.route('/help')
+@bp.route('/')
 def help():
-    return __doc__
+    """Basic help.
+
+    Doesn't really help much, and isn't even mentioned by the RFCs but
+    at least it gives an idea...
+
+    """
+    resp = flask.make_response(__doc__, 200)
+    resp.content_type = 'text/plain'
+    return resp
 
 @bp.route('/ServiceProviderConfig')
 def config():
+    """Return the ServiceProvider structure.
+
+    This allows the iDP to determine which features we provide
+    """
     # See https://datatracker.ietf.org/doc/html/rfc7644#section-4
     # See example at https://datatracker.ietf.org/doc/html/rfc7643#section-8.5
     return {
@@ -133,6 +146,14 @@ def parse_payload():
 
 @dataclasses.dataclass
 class User:
+    """Our internal representation of a user.
+
+    This functions as a sensible pythonic data structure, which can
+    communicate with both a SCIM provider and the underlying sqlite3
+    database.
+
+    """
+    # This could really have been an SQLObject thing... Maybe later.
     display_name: str
     user_name: str
     email: str
@@ -162,18 +183,25 @@ class User:
             self.password = random_password()
         if self.created_at is None:
             self.created_at = datetime.datetime.utcnow()
+        if isinstance(self.created_at, str):
+            self.created_at = datetime.datetime.fromisoformat(self.created_at)
         if self.updated_at is None:
             self.updated_at = datetime.datetime.utcnow()
+        if isinstance(self.updated_at, str):
+            self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
         if self.email is None:
             self.email = self.user_name + '@invalid'
 
     @classmethod
     def lookup(cls, user_id: str=None, user_name=None):
+        """Get a user from the database
+
+        If the user cannot be found, NotFound will be raised
+        """
         if user_id is None and user_name is None:
             raise ValueError('Need at least one not-None parameter')
 
-        db = get_db()
-        cur = db.cursor()
+        cur = get_db().cursor()
         try:
             if user_id is not None:
                 thequery = f'select {", ".join(cls._mapping.values())} from user where id = ?', (user_id, )
@@ -191,6 +219,13 @@ class User:
                       for attrib, value in zip(cls._mapping.keys(), res)})
 
     def insert(self):
+        """Insert the user into the database.
+
+        This assumes that the user does not already exist. Attempting
+        to insert an user which already exists will result in Conflict
+        being raised.
+
+        """
         db = get_db()
         cur = db.cursor()
         try:
@@ -207,6 +242,10 @@ class User:
             cur.close()
 
     def update(self):
+        """Update the database to match the user datastructure.
+
+        This silently assumes that the user already exists in the database.
+        """
         db = get_db()
         cur = db.cursor()
         try:
@@ -224,6 +263,9 @@ class User:
             cur.close()
 
     def delete(self):
+        """Delete the user from the database.
+
+        """
         db = get_db()
         cur = db.cursor()
         try:
@@ -235,6 +277,12 @@ class User:
             cur.close()
 
     def amend(self, payload: dict):
+        """Amend the user according to a SCIM payload
+
+        The SCIM payload is expected to conform to
+        https://datatracker.ietf.org/doc/html/draft-scim-core-schema-01#section-5.1
+
+        """
         if 'userName' in payload:
             self.user_name = payload['userName']
         if 'displayName' in payload:
@@ -247,15 +295,10 @@ class User:
     def as_scim_user(self) -> dict:
         """Return a structure to represent the SCIM user
 
-        This only includes what we know about the user; i.e. no externalId
+        This only includes what we know about the user; i.e. no externalId.
+
+        See also https://datatracker.ietf.org/doc/html/draft-scim-core-schema-01#section-5.1
         """
-        def isoformat(stamp) -> str:
-            # Work around a buggy sqlite3 implementation: When we
-            # query the dates from the database, they are not always
-            # converted!??
-            if isinstance(stamp, datetime.datetime):
-                return stamp.isoformat()
-            return stamp
         return {
             "schemas":[
                 "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -272,8 +315,8 @@ class User:
             ],
             "meta": {
                 "resourceType": "User",
-                "created": isoformat(self.created_at),
-                "lastModified": isoformat(self.updated_at),
+                "created": self.created_at.isoformat(),
+                "lastModified": self.updated_at.isoformat(),
                 "location": flask.url_for('.get_existing_user', _external=True, user_id=self.user_id),
                 "version": "W/Unknown", # TODO: figure this out
                 # See https://datatracker.ietf.org/doc/html/rfc7643#section-3.1
@@ -342,14 +385,13 @@ def update_existing_user(user_id: str):
         raise BadRequest(description=f'Mismatch between name in url ("{user_id}") and id in payload ("{payload["id"]}")')
 
     try:
-        our_user = User.lookup(user_id=user_id)
+        user = User.lookup(user_id=user_id)
     except NotFound:
-        our_user = User.lookup(user_name=payload['userName'])
+        user = User.lookup(user_name=payload['userName'])
 
-    our_user.amend(payload)
-
-    our_user.update()
-    return our_user.as_scim_user()
+    user.amend(payload)
+    user.update()
+    return user.as_scim_user()
 
 @bp.route('/Users/<user_id>', methods=['DELETE'])
 def delete_existing_user(user_id: str):
