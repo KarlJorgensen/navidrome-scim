@@ -58,6 +58,7 @@ from werkzeug.exceptions import NotFound, BadRequest, Conflict
 
 from .db import get_db
 
+# The `/v2` is mandatory - see https://datatracker.ietf.org/doc/html/rfc7644#section-3.13
 bp = Blueprint('scim', __name__, url_prefix='/scim/v2')
 
 @bp.route('/help')
@@ -79,7 +80,7 @@ def config():
 
     This allows the iDP to determine which features we provide
     """
-    # See https://datatracker.ietf.org/doc/html/rfc7644#section-4
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-5
     # See example at https://datatracker.ietf.org/doc/html/rfc7643#section-8.5
     return {
         "schemas": [
@@ -121,14 +122,107 @@ def config():
                 "type": "oauthbearertoken",
                 "primary": True
             },
-            {
-                "name": "HTTP Basic",
-                "description": "Authentication scheme using the HTTP Basic Standard",
-                "specUri": "http://www.rfc-editor.org/info/rfc2617",
-                "documentationUri": "http://example.com/help/httpBasic.html",
-                "type": "httpbasic"
-            }
+            # {
+            #     "name": "HTTP Basic",
+            #     "description": "Authentication scheme using the HTTP Basic Standard",
+            #     "specUri": "http://www.rfc-editor.org/info/rfc2617",
+            #     "documentationUri": "http://example.com/help/httpBasic.html",
+            #     "type": "httpbasic"
+            # }
         ],
+    }
+
+@bp.route('/Schemas')
+def schemas():
+    # An HTTP GET to this endpoint is used to retrieve information about
+    # resource schemas supported by a SCIM service provider.  An HTTP
+    # GET to the endpoint "/Schemas" SHALL return all supported schemas
+    # in ListResponse format (see Figure 3).  Individual schema
+    # definitions can be returned by appending the schema URI to the
+    # /Schemas endpoint.  For example:
+    #
+    #       /Schemas/urn:ietf:params:scim:schemas:core:2.0:User
+    #
+    # The contents of each schema returned are described in Section 7 of
+    # [RFC7643].  An example representation of SCIM schemas may be found
+    # in Section 8.7 of [RFC7643].
+
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-7
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.7
+
+    return {
+        "totalResults": 2,
+        "itemsPerPage": 10,
+        "startIndex": 1,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "Resources": []
+        # TODO: Implement this
+    }
+
+@bp.route('/ResourceTypes')
+def resource_types():
+    # An HTTP GET to this endpoint is used to discover the types of
+    # resources available on a SCIM service provider (e.g., Users and
+    # Groups).  Each resource type defines the endpoints, the core
+    # schema URI that defines the resource, and any supported schema
+    # extensions.  The attributes defining a resource type can be found
+    # in Section 6 of [RFC7643], and an example representation can be
+    # found in Section 8.6 of [RFC7643].
+
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
+    return {
+        "totalResults": 2,
+        "itemsPerPage": 10,
+        "startIndex": 1,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "Resources": [
+            resource_type_user(),
+            resource_type_group(),
+        ]
+    }
+
+@bp.route('/Schemas/urn:ietf:params:scim:schemas:core:2.0:User')
+def resource_type_user():
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
+    return {
+        "schemas": [
+            "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
+        ],
+        "id":"User",
+        "name":"User",
+        "endpoint": "/Users",
+        "description": "User Account",
+        "schema": "urn:ietf:params:scim:schemas:core:2.0:User",
+        "schemaExtensions": [],
+        "meta": {
+            "location": flask.url_for('.resource_type_user', _external=True),
+            "resourceType": "ResourceType"
+        }
+    }
+
+@bp.route('/Schemas/urn:ietf:params:scim:schemas:core:2.0:Group')
+def resource_type_group():
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
+    # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
+    return {
+        "schemas": [
+            "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
+        ],
+        "id":"Group",
+        "name":"Group",
+        "endpoint": "/Groups",
+        "description": "Group",
+        "schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
+        "meta": {
+            "location": flask.url_for('.resource_type_group', _external=True),
+            "resourceType": "ResourceType"
+        }
     }
 
 def parse_payload():
@@ -249,7 +343,6 @@ class User:
         db = get_db()
         cur = db.cursor()
         try:
-            self.updated_at = datetime.datetime.utcnow()
             colpart = ", ".join([f'{colname} = ?'
                                  for colname in self._mapping.values()])
             theupdate = [f'update user set {colpart} where id = ?',
@@ -323,14 +416,35 @@ class User:
             }
         }
 
+@bp.route('/Me', methods=['GET', 'POST', 'PATCH', 'DELETE'])
+def me():
+    # See also https://datatracker.ietf.org/doc/html/rfc7644#section-3.11
+    return flask.make_response('Not implemented.\nSorry\n', 500)
 
-def derive_display_name(user: dict) -> str:
-    return user.get('displayName',
-                    user.get('name', {}).get('formatted', user['userName']))
 
-def derive_email(user: dict) -> str:
+def derive_display_name(payload: dict) -> str:
+    """Figure out the display name of the SCIM payload.
+
+    There are several arguably-correct ways of doing this, as the
+    payload can represent it in different ways.
+
+    """
+    return payload.get('displayName',
+                    payload.get('name', {}).get('formatted', user['userName']))
+
+def derive_email(payload: dict) -> str:
+    """Figure out the email address of the user in the SCIM payload
+
+    In navidrome we only support _one_ email address, whereas the SCIM
+    payload has support for multiple.
+
+    We are simple minded, so we simply pick the first.
+
+    If no email address is present, None will be returned.
+
+    """
     try:
-        return user['emails'][0]['value']
+        return payload['emails'][0]['value']
     except (IndexError, KeyError):
         return None
 
@@ -339,6 +453,12 @@ def random_id() -> str:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=22))
 
 def random_password() -> str:
+    """Generate a random password.
+
+    Arguably, this is not cryptographically strong, but at 40
+    characters it should be strong enough for most purposes.
+
+    """
     return ''.join(random.choices(string.ascii_letters + string.digits, k=40))
 
 
@@ -362,8 +482,9 @@ def users():
         # The iDP is probably trying to create a user that already exists.
         #
         # Technically: We should reject this. But it is also possible
-        # that we have merely gotten "de-synced" from the provider and
-        # it is trying to catch up.
+        # that Navidrome and the iDP are "out-of-sync", and doing this
+        # helps things sync up nicely.
+        #
         warnings.warn(f'iDP is trying to create a user which already exists: {payload["userName"]}.'
                       ' Updating existing user instead')
         user = User.lookup(user_name=payload['userName'])
@@ -373,12 +494,21 @@ def users():
 
 @bp.route('/Users/<user_id>', methods=['GET'])
 def get_existing_user(user_id: str):
-    user = User.lookup(user_id=user_id)
+    """Lookup an existing user by ID
 
+    """
+    # the ID is NOT the user name, but the primary key from the `user`
+    # table. Usually some random string.
+    user = User.lookup(user_id=user_id)
     return user.as_scim_user()
 
 @bp.route('/Users/<user_id>', methods=['PUT'])
 def update_existing_user(user_id: str):
+    """Update an existing user
+    """
+    # the ID is NOT the user name, but the primary key from the `user`
+    # table. Usually some random string.
+    #
     # See https://datatracker.ietf.org/doc/html/rfc7644#section-3.5.1
     payload = parse_payload()
     if user_id != payload['id']:
@@ -395,7 +525,13 @@ def update_existing_user(user_id: str):
 
 @bp.route('/Users/<user_id>', methods=['DELETE'])
 def delete_existing_user(user_id: str):
-    our_user = User.lookup(user_id=user_id)
+    """Delete an existing user
+
+    If the user does not exist, this will raise NotFound
+
+    """
+    our_user = User.lookup(user_id=user_id) # raises NotFound if
+                                            # ... not found
     our_user.delete()
     return {}
 
