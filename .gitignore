@@ -1,2 +1,8 @@
 /src/instance/
 /src/scim/__pycache__/
+/src/navidrome_scim.egg-info/
+/src/navidrome_scim/__pycache__/
+/bin/
+/lib/
+/pyvenv.cfg
+/var/

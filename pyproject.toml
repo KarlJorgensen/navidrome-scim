@@ -1,0 +1,18 @@
+[project]
+name = 'navidrome_scim'
+version = "0.1.0"
+authors = [
+  {name = "Karl Jorgensen", email = "karl@jorgensen.org.uk"},
+]
+description = "A simple SCIM provider for Navidrome"
+requires-python = ">= 3.11"
+keywords = ["navidrome", "SCIM"]
+dependencies = [
+  'flask >= 2.2',
+]
+
+[project.scripts]
+navidrome-scim = "navidrome_scim:run"
+
+[build-system]
+requires = ["setuptools"]
