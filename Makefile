@@ -7,3 +7,7 @@ run :
 .PHONY: debug
 debug :
 	./bin/navidrome-scim run --host 0.0.0.0 --debug
+
+.PHONY: wheel
+wheel:
+	./setup.py bdist_wheel

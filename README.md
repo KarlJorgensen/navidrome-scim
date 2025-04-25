@@ -23,4 +23,6 @@ This was developed for version 0.55.2 of Navidrome; although it is
 likely to work on later versions too, no guarantees can be
 offered. Sorry.
 
-This has been tested using Authentik 2025.2.4.
+This has been tested using Authentik 2025.2.4, and _should_ work with
+other identity providers.
+

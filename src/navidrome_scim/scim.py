@@ -59,10 +59,10 @@ from werkzeug.exceptions import NotFound, BadRequest, Conflict
 from .db import get_db
 
 # The `/v2` is mandatory - see https://datatracker.ietf.org/doc/html/rfc7644#section-3.13
-bp = Blueprint('scim', __name__, url_prefix='/scim/v2')
+blueprint = Blueprint('scim', __name__, url_prefix='/scim/v2')
 
-@bp.route('/help')
-@bp.route('/')
+@blueprint.route('/help')
+@blueprint.route('/')
 def help():
     """Basic help.
 
@@ -74,7 +74,7 @@ def help():
     resp.content_type = 'text/plain'
     return resp
 
-@bp.route('/ServiceProviderConfig')
+@blueprint.route('/ServiceProviderConfig')
 def config():
     """Return the ServiceProvider structure.
 
@@ -132,7 +132,7 @@ def config():
         ],
     }
 
-@bp.route('/Schemas')
+@blueprint.route('/Schemas')
 def schemas():
     # An HTTP GET to this endpoint is used to retrieve information about
     # resource schemas supported by a SCIM service provider.  An HTTP
@@ -161,7 +161,7 @@ def schemas():
         # TODO: Implement this
     }
 
-@bp.route('/ResourceTypes')
+@blueprint.route('/ResourceTypes')
 def resource_types():
     # An HTTP GET to this endpoint is used to discover the types of
     # resources available on a SCIM service provider (e.g., Users and
@@ -185,7 +185,7 @@ def resource_types():
         ]
     }
 
-@bp.route('/Schemas/urn:ietf:params:scim:schemas:core:2.0:User')
+@blueprint.route('/Schemas/urn:ietf:params:scim:schemas:core:2.0:User')
 def resource_type_user():
     # See https://datatracker.ietf.org/doc/html/rfc7643#section-6
     # See https://datatracker.ietf.org/doc/html/rfc7643#section-8.6
@@ -219,12 +219,12 @@ def parse_payload():
         raise BadRequest(description=str(exc))
 
 
-@bp.route('/Me', methods=['GET', 'POST', 'PATCH', 'DELETE'])
+@blueprint.route('/Me', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 def me():
     # See also https://datatracker.ietf.org/doc/html/rfc7644#section-3.11
     return flask.make_response('Not implemented.\nSorry\n', 500)
 
-@bp.route('/Users', methods=['POST'])
+@blueprint.route('/Users', methods=['POST'])
 def users():
     """Create a user
     """
@@ -254,7 +254,7 @@ def users():
         user.update()
         return flask.make_response(user.as_scim_user(), 201)
 
-@bp.route('/Users/<user_id>', methods=['GET'])
+@blueprint.route('/Users/<user_id>', methods=['GET'])
 def get_existing_user(user_id: str):
     """Lookup an existing user by ID
 
@@ -264,7 +264,7 @@ def get_existing_user(user_id: str):
     user = User.lookup(user_id=user_id)
     return user.as_scim_user()
 
-@bp.route('/Users/<user_id>', methods=['PUT'])
+@blueprint.route('/Users/<user_id>', methods=['PUT'])
 def update_existing_user(user_id: str):
     """Update an existing user
     """
@@ -285,7 +285,7 @@ def update_existing_user(user_id: str):
     user.update()
     return user.as_scim_user()
 
-@bp.route('/Users/<user_id>', methods=['DELETE'])
+@blueprint.route('/Users/<user_id>', methods=['DELETE'])
 def delete_existing_user(user_id: str):
     """Delete an existing user
 
@@ -297,7 +297,7 @@ def delete_existing_user(user_id: str):
     our_user.delete()
     return {}
 
-# @bp.before_request
+# @blueprint.before_request
 def print_request():
     print(f'Got {flask.request.method} request for {flask.request.url}')
 
@@ -319,7 +319,7 @@ def print_request():
 
     print('-' * 72)
 
-# @bp.after_request
+# @blueprint.after_request
 def print_response(resp):
     print(f'Sending Response:\n{resp}')
     payload = resp.get_data()

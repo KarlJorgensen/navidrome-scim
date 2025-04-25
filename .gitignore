@@ -6,3 +6,5 @@
 /lib/
 /pyvenv.cfg
 /var/
+/build/
+/dist/

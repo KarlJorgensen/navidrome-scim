@@ -29,7 +29,7 @@ def create_app(test_config=None):
     #     pass
 
     db.init_app(app)
-    app.register_blueprint(scim.bp)
+    app.register_blueprint(scim.blueprint)
 
     # a simple page that says hello
     @app.route('/hello')
