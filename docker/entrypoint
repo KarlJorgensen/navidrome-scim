@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+myname="$(basename "$0")"
+
+if [ $# -eq 0 ] ; then
+    echo $myname: Note: No args given at all. So running bash ...
+    set -- bash
+fi
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    (debug)
+	exec /home/navidrome/bin/navidrome-scim run --host ${HOST:-0.0.0.0} --port ${PORT:-5000} "$@"
+	;;
+    (run)
+	exec /home/navidrome/bin/navidrome-scim run --host ${HOST:-0.0.0.0} --port ${PORT:-5000} "$@"
+	;;
+    (*bash|*sh)
+	exec "$cmd" "$@"
+	;;
+    (*)
+	echo ${myname}: No sensible command found. Just running it, hoping for the best...
+	exec "$cmd" "$@"
+	;;
+esac

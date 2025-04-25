@@ -1,13 +1,17 @@
 #!/usr/bin/make -f
 
 .PHONY: run
-run :
-	./bin/navidrome-scim run --host 0.0.0.0
+run : wheel
+	$(MAKE) -C docker run
 
 .PHONY: debug
-debug :
-	./bin/navidrome-scim run --host 0.0.0.0 --debug
+debug : wheel
+	$(MAKE) -C docker debug
 
 .PHONY: wheel
 wheel:
 	./setup.py bdist_wheel
+
+.PHONY: image
+image: wheel
+	$(MAKE) -C docker image
