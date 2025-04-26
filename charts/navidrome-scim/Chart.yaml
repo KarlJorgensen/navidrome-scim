@@ -1,0 +1,6 @@
+apiVersion: v2
+name: navidrome-scim
+description: SCIM support for Navidrome
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

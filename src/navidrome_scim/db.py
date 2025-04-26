@@ -1,15 +1,20 @@
 
 import sqlite3
 import datetime
+import os
 
 from flask import current_app, g
 
+try:
+    DBFILE = os.environ['DATABASE']
+except KeyError:
+    raise SystemExit('Environment variable `DATABASE` is not set. You really need that.')
+
 def get_db():
     if 'db' not in g:
-        dbname = current_app.config['DATABASE']
         try:
             g.db = sqlite3.connect(
-                dbname,
+                DBFILE,
                 detect_types=sqlite3.PARSE_DECLTYPES
             )
         except sqlite3.OperationalError as exc:

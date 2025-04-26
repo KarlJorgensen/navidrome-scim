@@ -15,3 +15,16 @@ wheel:
 .PHONY: image
 image: wheel
 	$(MAKE) -C docker image
+
+.PHONY: image-push
+image-push: image
+	$(MAKE) -C docker push
+
+
+.PHONY: helm-diff
+helm-diff :
+	$(MAKE) -C charts/navidrome-scim diff
+
+.PHONY: helm-upgrade
+helm-upgrade: image-push
+	$(MAKE) -C charts/navidrome-scim upgrade
