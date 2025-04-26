@@ -29,7 +29,7 @@ a _shared_ cache.
 Instead: Navidrome must be configured to use a _private_ cache,
 e.g. by setting
 
-    ND_DBPATH: /data/navidrome.db?cache=private&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=norma
+    ND_DBPATH: /data/navidrome.db?cache=private&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal
 
 This has been developed for (and tested with) Authentik; it _should_
 work with other identity providers.
