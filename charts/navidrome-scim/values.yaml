@@ -107,12 +107,17 @@ resources: {}
 # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
 livenessProbe:
   httpGet:
-    path: /scim/v2/
+    path: /ping
     port: http
+  periodSeconds: 60
+  timeoutSeconds: 10
+
 readinessProbe:
   httpGet:
-    path: /scim/v2/
+    path: /ping
     port: http
+  periodSeconds: 60
+  timeoutSeconds: 10
 
 # This section is for setting up autoscaling more information can be
 # found here:
@@ -150,17 +155,6 @@ schedulerName: ""
 activeDeadlineSeconds: ""
 
 navidrome:
-# Name of the "data" PVC for Navidrome. Usually "navidrome-data", but
-# left empty here to force users to explicitly specify it.
-#
-# Note that the PVC must have AccessModes "ReadWriteMany" for things
-# to work.
-  data_pvc: ""
-
-  # If (for some reason) you do not want to expose the complete data
-  # volume to navidrome-scim, AND the database file is in a
-  # subdirectory: specify the directory name here.
-  subPath: ""
-
-  # Path to the navidrome DB file - relative to the root and subPath above.
-  dbfile: "navidrome.db"
+  baseUrl: http://navidrome.svc:4533
+  usernameHeader: X-Authentik-Username
+  username: akadmin

@@ -4,7 +4,7 @@ HELM_REPO=home
 KUBE_CONTEXT=home
 NAMESPACE=kj
 
-OPTIONS = --set navidrome.data_pvc=navidrome-data --set image.pullPolicy=Always
+OPTIONS = --set image.pullPolicy=Always
 
 .PHONY: diff
 diff :

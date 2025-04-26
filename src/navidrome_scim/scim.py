@@ -13,11 +13,7 @@ This implements a (rather basic) SCIM provider for Navidrome which
 creates/updates/deletes Navidrome users in response to requests from
 the identity provider of your choice.
 
-NOTE: This does not use the Navidrome API - it accesses the underlying
-      Navidrome database directly, and will thus be sensitive to any
-      schema/logic changes in Navidrome.
-
-      This was developed for version 0.55.2 of Navidrome; although it
+NOTE: This was developed for version 0.55.2 of Navidrome; although it
       is likely to work on later versions too, no guarantees can be
       offered. Sorry.
 
@@ -40,15 +36,16 @@ NOTE: This does not use the Navidrome API - it accesses the underlying
 #
 # Navidrome does not support groups. It is simply not a thing.
 
-import datetime
 import dataclasses
+import datetime
 import json
+import os
 import random
 import string
-import sqlite3
-import warnings
+import sys
 
 import flask
+import requests
 
 from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
@@ -56,7 +53,14 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.exceptions import NotFound, BadRequest, Conflict
 
-from .db import get_db
+# TODO: Proper error messages around missing env vars
+NAVIDROME_BASE_URL = os.environ.get('NAVIDROME_BASE_URL', 'http://navidrome.svc:4533')
+
+NAVIDROME_USER = os.environ.get('USERNAME', 'admin')
+
+NAVIDROME_HEADERS = {
+    os.environ.get('USERNAME_HEADER', 'X-Authentik-Username'): NAVIDROME_USER
+}
 
 # The `/v2` is mandatory - see https://datatracker.ietf.org/doc/html/rfc7644#section-3.13
 blueprint = Blueprint('scim', __name__, url_prefix='/scim/v2')
@@ -232,11 +236,22 @@ def users():
     # See https://datatracker.ietf.org/doc/html/rfc7644#section-3.3
     payload = parse_payload()
 
+    user = User(user_name=payload['userName'],
+                display_name=derive_display_name(payload),
+                email=derive_email(payload),
+                password=random_password())
+    if user.user_name == NAVIDROME_USER:
+        # Uh-oh. SCIM is trying to create the user that we are using
+        # for SCIM. That cannot possibly work - it has to already
+        # exist.
+        #
+        # And we do not want it to be managed by SCIM
+        msg = f'Refusing to create {user.user_name}' \
+            ' as we use it ourselves.'
+        print(msg, file=sys.stderr)
+        return flask.make_response(msg, 409)
+
     try:
-        user = User(user_name=payload['userName'],
-                    display_name=derive_display_name(payload),
-                    email=derive_email(payload),
-                    password=random_password())
         user.insert()
 
         return flask.make_response(user.as_scim_user(), 201)
@@ -247,9 +262,9 @@ def users():
         # that Navidrome and the iDP are "out-of-sync", and doing this
         # helps things sync up nicely.
         #
-        warnings.warn(f'iDP is trying to create a user which already exists: {payload["userName"]}.'
-                      ' Updating existing user instead')
-        user = User.lookup(user_name=payload['userName'])
+        print(f'iDP is trying to create a user which already exists: {payload["userName"]}.'
+              ' Updating existing user instead')
+        user = User.lookup_by_name(user_name=payload['userName'])
         user.amend(payload)
         user.update()
         return flask.make_response(user.as_scim_user(), 201)
@@ -261,7 +276,7 @@ def get_existing_user(user_id: str):
     """
     # the ID is NOT the user name, but the primary key from the `user`
     # table. Usually some random string.
-    user = User.lookup(user_id=user_id)
+    user = User.lookup_by_id(user_id=user_id)
     return user.as_scim_user()
 
 @blueprint.route('/Users/<user_id>', methods=['PUT'])
@@ -277,9 +292,20 @@ def update_existing_user(user_id: str):
         raise BadRequest(description=f'Mismatch between name in url ("{user_id}") and id in payload ("{payload["id"]}")')
 
     try:
-        user = User.lookup(user_id=user_id)
+        user = User.lookup_by_id(user_id=user_id)
     except NotFound:
-        user = User.lookup(user_name=payload['userName'])
+        user = User.lookup_by_name(user_name=payload['userName'])
+
+    if user.user_name == NAVIDROME_USER:
+        # Uh-oh. SCIM is trying to create the user that we are using
+        # for SCIM. That cannot possibly work - it has to already
+        # exist.
+        #
+        # And we do not want it to be managed by SCIM
+        msg = f'Refusing to update {user.user_name}' \
+            ' as we use it ourselves.'
+        print(msg, file=sys.stderr)
+        return flask.make_response(msg, 409)
 
     user.amend(payload)
     user.update()
@@ -292,9 +318,19 @@ def delete_existing_user(user_id: str):
     If the user does not exist, this will raise NotFound
 
     """
-    our_user = User.lookup(user_id=user_id) # raises NotFound if
-                                            # ... not found
-    our_user.delete()
+    user = User.lookup_by_id(user_id=user_id) # raises NotFound if ... not found
+    if user.user_name == NAVIDROME_USER:
+        # Uh-oh. SCIM is trying to create the user that we are using
+        # for SCIM. That cannot possibly work - it has to already
+        # exist.
+        #
+        # And we do not want it to be managed by SCIM
+        msg = f'Refusing to delete {user.user_name}' \
+            ' as we use it ourselves.'
+        print(msg, file=sys.stderr)
+        return flask.make_response(msg, 409)
+
+    user.delete()
     return {}
 
 # @blueprint.before_request
@@ -347,21 +383,11 @@ class User:
     updated_at: datetime.datetime = None
 
     # Mapping between our attributes and corresponding database columns
-    _mapping = {
-        'user_id': 'id',
-        'user_name': 'user_name',
-        'display_name': 'name',
-        'email': 'email',
-        'is_admin': 'is_admin',
-        'created_at': 'created_at',
-        'updated_at': 'updated_at',
-        'password': 'password',
-    }
 
     def __post_init__(self):
         """Set sensible values on fields that are mandatory"""
-        if self.user_id is None:
-            self.user_id = random_id()
+        # if self.user_id is None:
+        #     self.user_id = random_id()
         if self.password is None:
             self.password = random_password()
         if self.created_at is None:
@@ -372,30 +398,63 @@ class User:
             self.email = self.user_name + '@invalid'
 
     @classmethod
-    def lookup(cls, user_id: str=None, user_name=None):
-        """Get a user from the database
+    def lookup_by_id(cls, user_id: str):
+        resp = requests.get(NAVIDROME_BASE_URL + '/api/user/' + user_id,
+                            headers=NAVIDROME_HEADERS)
+        resp.raise_for_status()
+        return cls._from_nd(resp.json())
 
-        If the user cannot be found, NotFound will be raised
-        """
-        if user_id is None and user_name is None:
-            raise ValueError('Need at least one not-None parameter')
+    @classmethod
+    def _list_all_users(cls):
+        """Yields succesive users from Navidrome"""
+        start = 0
+        size = 10
+        while True:
+            resp = requests.get(NAVIDROME_BASE_URL + '/api/user',
+                                params={'_start': start,
+                                        '_end': start+size,
+                                        '_sort': 'userName',
+                                        '_order': 'ASC'})
+            resp.raise_for_status()
+            users = resp.json()
+            yield from [cls._from_nd(user)
+                        for user in users]
+            if len(users) < size:
+                break
+            start += size
 
-        cur = get_db().cursor()
-        try:
-            if user_id is not None:
-                thequery = f'select {", ".join(cls._mapping.values())} from user where id = ?', (user_id, )
-            else:
-                thequery = f'select {", ".join(cls._mapping.values())} from user where user_name = ?', (user_name, )
-            # print(f'{thequery=}')
-            cur.execute(*thequery)
-            res = cur.fetchone()
-            if res is None:
-                raise NotFound('User not found')
-        finally:
-            cur.close()
+    @classmethod
+    def lookup_by_name(cls, user_name: str):
+        """Find a user by name"""
+        # Navidrome does not appear to have a way to do this, so we
+        # resort to listing _all_ the users to find the one we want
+        # :-(
+        users = [user
+                 for user in cls._list_all_users()
+                 if user.user_name == user_name]
+        if not users:
+            raise NotFound
+        return users[0]
 
-        return cls(**{attrib: value
-                      for attrib, value in zip(cls._mapping.keys(), res)})
+    @classmethod
+    def _from_nd(cls, nduser: dict):
+        """Construct a User entry from Navidrome"""
+        return cls(user_id=nduser['id'],
+                   display_name=nduser.get('name'),
+                   user_name=nduser['userName'],
+                   email=nduser['email'],
+                   is_admin=bool(nduser.get('isAdmin', False))
+                   )
+
+    def _to_nd(self):
+        return {
+            # "id": self.user_id,
+            "name": self.display_name,
+            "userName": self.user_name,
+            "email": self.email,
+            "isAdmin": self.is_admin,
+            "password": self.password,
+        }
 
     def insert(self):
         """Insert the user into the database.
@@ -405,54 +464,33 @@ class User:
         being raised.
 
         """
-        db = get_db()
-        cur = db.cursor()
-        try:
-            insert_part = f'insert into user({", ".join(self._mapping.values())})'
-            values_part = f'values ({", ".join(["?" for x in self._mapping.keys()])})'
-            theinsert = insert_part + ' ' + values_part, tuple([getattr(self, attrib)
-                                                                for attrib in self._mapping.keys()])
-            # print(f'{theinsert=}')
-            cur.execute(*theinsert)
-            db.commit()
-        except sqlite3.IntegrityError as exc:
-            raise Conflict(description=str(exc))
-        finally:
-            cur.close()
+        resp = requests.post(NAVIDROME_BASE_URL + '/api/user',
+                             headers=NAVIDROME_HEADERS,
+                             json=self._to_nd())
+        if resp.status_code == 400:
+            raise Conflict
+        resp.raise_for_status()
+        self.user_id = resp.json()['id']
+        return self
 
     def update(self):
         """Update the database to match the user datastructure.
 
         This silently assumes that the user already exists in the database.
         """
-        db = get_db()
-        cur = db.cursor()
-        try:
-            colpart = ", ".join([f'{colname} = ?'
-                                 for colname in self._mapping.values()])
-            theupdate = [f'update user set {colpart} where id = ?',
-                         tuple([getattr(self, attrib)
-                                for attrib in self._mapping.keys()
-                                ] + [self.user_id])]
-            # print(f'{theupdate=}')
-            cur.execute(*theupdate)
-            db.commit()
-        finally:
-            cur.close()
+        resp = requests.put(NAVIDROME_BASE_URL + '/api/user/' + self.user_id,
+                            headers=NAVIDROME_HEADERS,
+                            json=self._to_nd())
+        resp.raise_for_status()
+        return self
 
     def delete(self):
         """Delete the user from the database.
 
         """
-        db = get_db()
-        cur = db.cursor()
-        try:
-            thedelete = f'delete from user where id = ?', (self.user_id, )
-            # print(f'{thedelete=}')
-            cur.execute(*thedelete)
-            db.commit();
-        finally:
-            cur.close()
+        resp = requests.delete(NAVIDROME_BASE_URL + '/api/user/' + self.user_id,
+                               headers=NAVIDROME_HEADERS)
+        resp.raise_for_status()
 
     def amend(self, payload: dict):
         """Amend the user according to a SCIM payload
@@ -482,8 +520,10 @@ class User:
                 "urn:ietf:params:scim:schemas:core:2.0:User"
             ],
             "id": self.user_id,
+            "userName": self.user_name,
             "displayName": self.display_name,
             "active": True,
+            # "profileUrl":  f'{NAVIDROME_URL}/app/#user/{self.user_id}',
             "emails": [
                 {
                     "value": self.email,

@@ -12,12 +12,18 @@ This implements a (rather basic) SCIM provider for Navidrome which
 creates/updates/deletes Navidrome users in response to requests from
 the identity provider of your choice.
 
+## Limitations ##
 
-## NOTE ##
+The SCIM provider assumes that Navidrome is configured to _trust_ a
+(configurable) username header in the incoming requests - which would
+be the case if it is behind an authenticating proxy.  But the SCIM
+provider needs to be able to access navidrome _directly_, as it needs
+to inject its own header.
 
-This does not use the Navidrome API - it accesses the underlying
-Navidrome database directly, and will thus be sensitive to any
-schema/logic changes in Navidrome.
+Users created in Navidrome will _not_ be admin users. However, a
+user's admin status will not be modified by the SCIM provider.
+
+# NOTE #
 
 This was developed for version 0.55.2 of Navidrome; although it is
 likely to work on later versions too, no guarantees can be
@@ -25,4 +31,3 @@ offered. Sorry.
 
 This has been tested using Authentik 2025.2.4, and _should_ work with
 other identity providers.
-

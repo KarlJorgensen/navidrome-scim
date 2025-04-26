@@ -1,5 +1,11 @@
 #!/usr/bin/make -f
 
+.PHONY: run-local
+# Assumes you have a python venv with the package installed,
+# and have set up port forwarding to the navidrome service
+run-local:
+	. ./bin/activate ; NAVIDROME_BASE_URL=http://localhost:4533 USERNAME=akadmin navidrome-scim run --host 0.0.0.0
+
 .PHONY: run
 run : wheel
 	$(MAKE) -C docker run

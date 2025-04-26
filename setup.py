@@ -26,7 +26,7 @@ setup(
     # https://www.python.org/dev/peps/pep-0440/
     #
     # For a discussion on single-sourcing the version across setup.py and the
-    version="0.1.0",
+    version="0.2.0",
 
     # https://packaging.python.org/specifications/core-metadata/#summary
     description="SCIM provider for Navidrome",
@@ -91,7 +91,8 @@ setup(
     # https://packaging.python.org/discussions/install-requires-vs-requirements/
     install_requires=[
         "Flask",
-        "click"
+        "click",
+        "requests",
     ],
 
     # List additional groups of dependencies here (e.g. development

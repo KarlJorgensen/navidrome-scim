@@ -16,20 +16,13 @@ It is intended for use in this scenario:
    going through the proxy as this would allow users to chose any
    identity.
    
- * Navidrome uses a SQLite database - which is the default.
- 
- * The PersistentVolumeClaim for navidrome's "data" volume (named
-   `navidrome-data` by default) as AccessModes which include
-   `ReadWriteMany`.
+   ... Except for this SCIM provider: It needs to access navidrome
+   _directly_ and will inject its own HTTP header to authenticate.
 
-Navidrome's default `ND_DBPATH` should NOT be used in conjuction with
-`navidrome-scim`: **THIS CAN CAUSE DATABASE CORRUPTION** as it assumes
-a _shared_ cache.
-
-Instead: Navidrome must be configured to use a _private_ cache,
-e.g. by setting
-
-    ND_DBPATH: /data/navidrome.db?cache=private&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal
+Which basically translates to having navidrome-scim installed in the
+same Kubernetes namespace as navidrome - this allows the SCIM provider
+to access the navidrome service directly, bypassing the identity
+provider.
 
 This has been developed for (and tested with) Authentik; it _should_
 work with other identity providers.
