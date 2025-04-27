@@ -62,6 +62,12 @@ spec:
               value: {{ .Values.navidrome.usernameHeader | quote }}
             - name: USERNAME
               value: {{ .Values.navidrome.username | quote }}
+            - name: BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "navidrome-scim.fullname" . }}-bearer-token
+                  key: token
+                  optional: false
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

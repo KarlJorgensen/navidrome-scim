@@ -2,9 +2,14 @@
 
 .PHONY: run-local
 # Assumes you have a python venv with the package installed,
-# and have set up port forwarding to the navidrome service
+# and have set up port forwarding to the navidrome service on port 4533
 run-local:
-	. ./bin/activate ; NAVIDROME_BASE_URL=http://localhost:4533 USERNAME=akadmin navidrome-scim run --host 0.0.0.0
+	. ./bin/activate ; \
+	export NAVIDROME_BASE_URL=http://localhost:4533; \
+	export USERNAME=akadmin ; \
+	export USERNAME_HEADER=X-Authentik-Username; \
+	export BEARER_TOKEN=GoodForDevOnly; \
+		navidrome-scim run --host 0.0.0.0
 
 .PHONY: run
 run : wheel
@@ -22,10 +27,16 @@ wheel:
 image: wheel
 	$(MAKE) -C docker image
 
+.PHONY: chart-push
+chart-push: helm-upgrade
+	$(MAKE) -C charts/navidrome-scim push
+
 .PHONY: image-push
 image-push: image
 	$(MAKE) -C docker push
 
+.PHONY: push
+push: image-push chart-push
 
 .PHONY: helm-diff
 helm-diff :

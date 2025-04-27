@@ -38,6 +38,7 @@ NOTE: This was developed for version 0.55.2 of Navidrome; although it
 
 import dataclasses
 import datetime
+import functools
 import json
 import os
 import random
@@ -53,17 +54,52 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.exceptions import NotFound, BadRequest, Conflict
 
-# TODO: Proper error messages around missing env vars
-NAVIDROME_BASE_URL = os.environ.get('NAVIDROME_BASE_URL', 'http://navidrome.svc:4533')
+try:
+    NAVIDROME_BASE_URL = os.environ['NAVIDROME_BASE_URL']
+except KeyError:
+    raise SystemExit('Environment variable NAVIDROME_BASE_URL is not set')
 
-NAVIDROME_USER = os.environ.get('USERNAME', 'admin')
+try:
+    NAVIDROME_USER = os.environ['USERNAME']
+except KeyError:
+    raise SystemExit('Environment variable USERNAME is not set')
+
+try:
+    USERNAME_HEADER = os.environ['USERNAME_HEADER']
+except KeyError:
+    raise SystemExit('Environment variable USERNAME_HEADER is not set')
 
 NAVIDROME_HEADERS = {
-    os.environ.get('USERNAME_HEADER', 'X-Authentik-Username'): NAVIDROME_USER
+    USERNAME_HEADER: NAVIDROME_USER
 }
+
+try:
+    BEARER_TOKEN = os.environ['BEARER_TOKEN']
+except KeyError:
+    raise SystemExit('Environment variable BEARER_TOKEN is not set')
 
 # The `/v2` is mandatory - see https://datatracker.ietf.org/doc/html/rfc7644#section-3.13
 blueprint = Blueprint('scim', __name__, url_prefix='/scim/v2')
+
+def needs_token(func):
+    """A decorator which checks the bearer token"""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return flask.make_response('Missing Authorization header', 401)
+
+        bearer, auth_token = auth_header.split(" ")
+        if bearer != 'Bearer':
+            return flask.make_response('Missing Bearer Authorization header', 401)
+
+        if auth_token != BEARER_TOKEN:
+            return flask.make_response('Invalid Bearer Authorization token', 401)
+
+        return func(*args, **kwargs)
+
+    return wrapper
 
 @blueprint.route('/help')
 @blueprint.route('/')
@@ -229,6 +265,7 @@ def me():
     return flask.make_response('Not implemented.\nSorry\n', 500)
 
 @blueprint.route('/Users', methods=['POST'])
+@needs_token
 def users():
     """Create a user
     """
@@ -242,14 +279,13 @@ def users():
                 password=random_password())
     if user.user_name == NAVIDROME_USER:
         # Uh-oh. SCIM is trying to create the user that we are using
-        # for SCIM. That cannot possibly work - it has to already
-        # exist.
+        # for SCIM. But it has to already exist!
         #
-        # And we do not want it to be managed by SCIM
-        msg = f'Refusing to create {user.user_name}' \
-            ' as we use it ourselves.'
-        print(msg, file=sys.stderr)
-        return flask.make_response(msg, 409)
+        # But obviously, the service provider did not believe the user
+        # existed. So we pretend to have created it.
+        #
+        user = User.lookup_by_name(NAVIDROME_USER)
+        return flask.make_response(user.as_scim_user(), 201)
 
     try:
         user.insert()
@@ -270,6 +306,7 @@ def users():
         return flask.make_response(user.as_scim_user(), 201)
 
 @blueprint.route('/Users/<user_id>', methods=['GET'])
+@needs_token
 def get_existing_user(user_id: str):
     """Lookup an existing user by ID
 
@@ -280,6 +317,7 @@ def get_existing_user(user_id: str):
     return user.as_scim_user()
 
 @blueprint.route('/Users/<user_id>', methods=['PUT'])
+@needs_token
 def update_existing_user(user_id: str):
     """Update an existing user
     """
@@ -297,11 +335,8 @@ def update_existing_user(user_id: str):
         user = User.lookup_by_name(user_name=payload['userName'])
 
     if user.user_name == NAVIDROME_USER:
-        # Uh-oh. SCIM is trying to create the user that we are using
-        # for SCIM. That cannot possibly work - it has to already
-        # exist.
-        #
-        # And we do not want it to be managed by SCIM
+        # Uh-oh. SCIM is trying to update the user that we are using
+        # for SCIM. We cannot allow that.
         msg = f'Refusing to update {user.user_name}' \
             ' as we use it ourselves.'
         print(msg, file=sys.stderr)
@@ -312,6 +347,7 @@ def update_existing_user(user_id: str):
     return user.as_scim_user()
 
 @blueprint.route('/Users/<user_id>', methods=['DELETE'])
+@needs_token
 def delete_existing_user(user_id: str):
     """Delete an existing user
 
@@ -320,15 +356,14 @@ def delete_existing_user(user_id: str):
     """
     user = User.lookup_by_id(user_id=user_id) # raises NotFound if ... not found
     if user.user_name == NAVIDROME_USER:
-        # Uh-oh. SCIM is trying to create the user that we are using
-        # for SCIM. That cannot possibly work - it has to already
-        # exist.
+        # Uh-oh. SCIM is trying to delete the user that we are using
+        # for SCIM. We cannot allow that.
         #
-        # And we do not want it to be managed by SCIM
+        # But to keep the identity provider happy: We prentend we deleted it.
         msg = f'Refusing to delete {user.user_name}' \
             ' as we use it ourselves.'
         print(msg, file=sys.stderr)
-        return flask.make_response(msg, 409)
+        return {}
 
     user.delete()
     return {}
@@ -411,6 +446,7 @@ class User:
         size = 10
         while True:
             resp = requests.get(NAVIDROME_BASE_URL + '/api/user',
+                                headers=NAVIDROME_HEADERS,
                                 params={'_start': start,
                                         '_end': start+size,
                                         '_sort': 'userName',

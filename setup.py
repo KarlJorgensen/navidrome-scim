@@ -26,7 +26,7 @@ setup(
     # https://www.python.org/dev/peps/pep-0440/
     #
     # For a discussion on single-sourcing the version across setup.py and the
-    version="0.2.0",
+    version="0.2.2",
 
     # https://packaging.python.org/specifications/core-metadata/#summary
     description="SCIM provider for Navidrome",
