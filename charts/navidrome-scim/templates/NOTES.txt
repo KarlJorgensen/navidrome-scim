@@ -18,6 +18,9 @@ Configure your Identity Provider to talk to SCIM at
    https://{{ first .Values.ingress.hosts }}/scim/v2
 {{ else }}
    http://{{ first .Values.ingress.hosts }}/scim/v2
+
+Since this traffic is non-encrypted, convince your identity provider
+to NOT verify SCIM server certificates.
 {{ end }}
 {{ else }}
 Configure your Identify Provider (which must be inside the same Kubernetes
